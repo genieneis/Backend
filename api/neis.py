@@ -26,7 +26,10 @@ async def save_schools(
 @router.get("/schools/search")
 async def search_local_schools(
     keyword: str = Query(..., min_length=1, description="학교명 검색어"),
-):
+):  
+    """
+    학교명 검색 API 
+    """
     return search_schools_from_temp_db(
         keyword=keyword,
     )
@@ -44,10 +47,7 @@ async def get_user_middle_school_timetable(
 
 ):
     """
-    중학교 시간표 조회 API.
-
-    예시:
-    GET /api/neis/middle-school/timetable?education_office_code=B10&school_code=7010057&grade=1&class_nm=3&date=20260515
+    중학교 시간표 조회 API
     """
 
     return await get_middle_school_timetable(
