@@ -1,0 +1,215 @@
+import os
+from datetime import datetime
+from typing import Any, Optional
+from zoneinfo import ZoneInfo
+
+import httpx
+from fastapi import HTTPException
+
+NEIS_MIDDLE_SCHOOL_TIMETABLE_URL = "https://open.neis.go.kr/hub/misTimetable"
+
+
+def get_neis_api_key() -> str:
+    api_key = os.getenv("NEIS_API_KEY")
+
+    if not api_key:
+        raise HTTPException(
+            status_code=500,
+            detail="NEIS_API_KEY 환경 변수가 설정되어 있지 않습니다.",
+        )
+
+    return api_key
+
+
+def get_today_yyyymmdd() -> str:
+    return datetime.now(ZoneInfo("Asia/Seoul")).strftime("%Y%m%d")
+
+
+def get_school_year(date_yyyymmdd: str) -> str:
+    """
+    NEIS 학년도 계산.
+    보통 3월부터 새 학년도이므로,
+    1~2월은 전년도 학년도로 봅니다.
+
+    예:
+    20260215 -> 2025
+    20260515 -> 2026
+    """
+    year = int(date_yyyymmdd[:4])
+    month = int(date_yyyymmdd[4:6])
+
+    if month < 3:
+        return str(year - 1)
+
+    return str(year)
+
+
+def extract_timetable_rows(data: dict[str, Any]) -> tuple[list[dict[str, Any]], int]:
+    """
+    NEIS misTimetable 응답에서 row와 전체 개수를 추출합니다.
+    """
+    if "RESULT" in data:
+        result = data["RESULT"]
+        code = result.get("CODE")
+        message = result.get("MESSAGE", "")
+
+        if code == "INFO-200":
+            return [], 0
+
+        raise HTTPException(
+            status_code=502,
+            detail=f"NEIS API 오류: {code} - {message}",
+        )
+
+    timetable = data.get("misTimetable")
+
+    if not timetable or not isinstance(timetable, list):
+        raise HTTPException(
+            status_code=502,
+            detail="NEIS 시간표 API 응답 형식이 예상과 다릅니다.",
+        )
+
+    total_count = 0
+    rows: list[dict[str, Any]] = []
+
+    for item in timetable:
+        if "head" in item:
+            for head_item in item["head"]:
+                if "list_total_count" in head_item:
+                    total_count = int(head_item["list_total_count"])
+
+                if "RESULT" in head_item:
+                    result = head_item["RESULT"]
+                    code = result.get("CODE")
+                    message = result.get("MESSAGE", "")
+
+                    if code != "INFO-000":
+                        raise HTTPException(
+                            status_code=502,
+                            detail=f"NEIS API 오류: {code} - {message}",
+                        )
+
+        if "row" in item:
+            rows = item["row"]
+
+    return rows, total_count
+
+
+def to_timetable_item(row: dict[str, Any]) -> dict[str, Any]:
+    """
+    프론트 시간표 리스트에 필요한 최소 정보만 반환합니다.
+    """
+    return {
+        "period": row.get("PERIO"),
+        "subject": row.get("ITRT_CNTNT"),
+    }
+
+async def fetch_timetable_page(
+    *,
+    client: httpx.AsyncClient,
+    api_key: str,
+    education_office_code: str,
+    school_code: str,
+    school_year: str,
+    grade: str,
+    class_nm: str,
+    date: str,
+    page_index: int,
+    page_size: int,
+) -> tuple[list[dict[str, Any]], int]:
+    params: dict[str, Any] = {
+        "KEY": api_key,
+        "Type": "json",
+        "pIndex": page_index,
+        "pSize": page_size,
+        "ATPT_OFCDC_SC_CODE": education_office_code,
+        "SD_SCHUL_CODE": school_code,
+        "AY": school_year,
+        "ALL_TI_YMD": date,
+        "GRADE": grade,
+        "CLASS_NM": class_nm,
+    }
+
+
+    try:
+        response = await client.get(
+            NEIS_MIDDLE_SCHOOL_TIMETABLE_URL,
+            params=params,
+        )
+        response.raise_for_status()
+    except httpx.HTTPStatusError as e:
+        raise HTTPException(
+            status_code=502,
+            detail=f"NEIS 시간표 API HTTP 오류: {e.response.status_code}",
+        ) from e
+    except httpx.RequestError as e:
+        raise HTTPException(
+            status_code=502,
+            detail=f"NEIS 시간표 API 요청 실패: {str(e)}",
+        ) from e
+
+    return extract_timetable_rows(response.json())
+
+
+async def get_middle_school_timetable(
+    *,
+    education_office_code: str,
+    school_code: str,
+    grade: str,
+    class_nm: str,
+    date: Optional[str] = None,
+):
+    api_key = get_neis_api_key()
+
+    target_date = date or get_today_yyyymmdd()
+    school_year = get_school_year(target_date)
+
+    page_index = 1
+    page_size = 100
+    total_count = 0
+    all_rows: list[dict[str, Any]] = []
+
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        while True:
+            rows, total_count = await fetch_timetable_page(
+                client=client,
+                api_key=api_key,
+                education_office_code=education_office_code,
+                school_code=school_code,
+                school_year=school_year,
+                grade=grade,
+                class_nm=class_nm,
+                date=target_date,
+                page_index=page_index,
+                page_size=page_size,
+            )
+
+            if not rows:
+                break
+
+            all_rows.extend(rows)
+
+            if len(all_rows) >= total_count:
+                break
+
+            page_index += 1
+
+    timetable = [to_timetable_item(row) for row in all_rows]
+
+    timetable.sort(
+        key=lambda item: int(item["period"]) if item.get("period") else 0
+    )
+
+    school_name = all_rows[0].get("SCHUL_NM") if all_rows else None
+    response_semester = all_rows[0].get("SEM") if all_rows else None
+
+    return {
+        "count": len(timetable),
+        "school_name": school_name,
+        "school_year": school_year,
+        "semester": response_semester,
+        "date": target_date,
+        "grade": grade,
+        "class_nm": class_nm,
+        "timetable": timetable,
+    }
