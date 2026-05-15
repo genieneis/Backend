@@ -14,3 +14,21 @@
     * 판서 연계: “칠판/자료 참고”
 * 예를 들어 수학 시간에 교사가 “여기서 중요한 건 미분계수는 순간변화율이라는 거예요”라고 말하면, 앱이 실시간 자막 아래에 [핵심 개념] 미분계수 = 순간변화율처럼 정리해주는 방식입니다.
 
+* 실시간 자막 기본 flow
+Flutter / Web
+  ↓ 마이크 음성 스트림
+
+FastAPI WebSocket 서버
+  ↓ 음성 chunk 전달
+
+Clova Speech Streaming API
+  ↓ partial/final STT 결과 반환
+
+FastAPI 서버
+  ↓ STT 결과 누적
+  ↓ 현재 과목 JSON 검색
+  ↓ LLM 보정/중요도 태깅
+
+Flutter / Web
+  ↓
+실시간 자막 + 핵심 개념 하이라이트 표시

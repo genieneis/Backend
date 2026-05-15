@@ -1,5 +1,6 @@
 import os
 from typing import AsyncGenerator
+from typing import Optional
 
 import anthropic
 
@@ -7,7 +8,7 @@ from .vector_search import search_curriculum
 
 CLAUDE_MODEL = "claude-sonnet-4-6"
 
-_client: anthropic.AsyncAnthropic | None = None
+_client: Optional[anthropic.AsyncAnthropic] = None
 
 
 def _get_client() -> anthropic.AsyncAnthropic:
