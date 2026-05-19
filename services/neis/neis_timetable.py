@@ -1,5 +1,6 @@
+import asyncio
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Optional
 from zoneinfo import ZoneInfo
 
@@ -38,6 +39,13 @@ def get_neis_api_key() -> str:
 
 def get_today_yyyymmdd() -> str:
     return datetime.now(ZoneInfo("Asia/Seoul")).strftime("%Y%m%d")
+
+
+def get_week_dates(date_yyyymmdd: str) -> list[str]:
+    """주어진 날짜가 속한 주의 월~금 날짜 목록 반환 (YYYYMMDD 형식)"""
+    dt = datetime.strptime(date_yyyymmdd, "%Y%m%d")
+    monday = dt - timedelta(days=dt.weekday())
+    return [(monday + timedelta(days=i)).strftime("%Y%m%d") for i in range(5)]
 
 
 def get_school_year(date_yyyymmdd: str) -> str:
@@ -194,6 +202,60 @@ async def fetch_timetable_page(
 )
 
 
+async def _get_single_day_timetable(
+    *,
+    client: httpx.AsyncClient,
+    api_key: str,
+    school_kind: str,
+    education_office_code: str,
+    school_code: str,
+    grade: str,
+    class_nm: str,
+    date: str,
+) -> dict[str, Any]:
+    school_year = get_school_year(date)
+
+    page_index = 1
+    page_size = 100
+    all_rows: list[dict[str, Any]] = []
+
+    while True:
+        rows, total_count = await fetch_timetable_page(
+            client=client,
+            api_key=api_key,
+            school_kind=school_kind,
+            education_office_code=education_office_code,
+            school_code=school_code,
+            school_year=school_year,
+            grade=grade,
+            class_nm=class_nm,
+            date=date,
+            page_index=page_index,
+            page_size=page_size,
+        )
+
+        if not rows:
+            break
+
+        all_rows.extend(rows)
+
+        if len(all_rows) >= total_count:
+            break
+
+        page_index += 1
+
+    timetable = [to_timetable_item(row) for row in all_rows]
+    timetable.sort(key=lambda item: int(item["period"]) if item.get("period") else 0)
+
+    return {
+        "school_name": all_rows[0].get("SCHUL_NM") if all_rows else None,
+        "school_year": school_year,
+        "semester": all_rows[0].get("SEM") if all_rows else None,
+        "count": len(timetable),
+        "timetable": timetable,
+    }
+
+
 async def get_school_timetable(
     *,
     school_kind: str,
@@ -204,57 +266,94 @@ async def get_school_timetable(
     date: Optional[str] = None,
 ):
     api_key = get_neis_api_key()
-
     target_date = date or get_today_yyyymmdd()
-    school_year = get_school_year(target_date)
-
-    page_index = 1
-    page_size = 100
-    total_count = 0
-    all_rows: list[dict[str, Any]] = []
 
     async with httpx.AsyncClient(timeout=10.0) as client:
-        while True:
-            rows, total_count = await fetch_timetable_page(
-                client=client,
-                api_key=api_key,
-                school_kind=school_kind,
-                education_office_code=education_office_code,
-                school_code=school_code,
-                school_year=school_year,
-                grade=grade,
-                class_nm=class_nm,
-                date=target_date,
-                page_index=page_index,
-                page_size=page_size,
-            )
-
-            if not rows:
-                break
-
-            all_rows.extend(rows)
-
-            if len(all_rows) >= total_count:
-                break
-
-            page_index += 1
-
-    timetable = [to_timetable_item(row) for row in all_rows]
-
-    timetable.sort(
-        key=lambda item: int(item["period"]) if item.get("period") else 0
-    )
-
-    school_name = all_rows[0].get("SCHUL_NM") if all_rows else None
-    response_semester = all_rows[0].get("SEM") if all_rows else None
+        result = await _get_single_day_timetable(
+            client=client,
+            api_key=api_key,
+            school_kind=school_kind,
+            education_office_code=education_office_code,
+            school_code=school_code,
+            grade=grade,
+            class_nm=class_nm,
+            date=target_date,
+        )
 
     return {
-        "count": len(timetable),
-        "school_name": school_name,
-        "school_year": school_year,
-        "semester": response_semester,
+        **result,
         "date": target_date,
         "grade": grade,
         "class_nm": class_nm,
-        "timetable": timetable,
+    }
+
+
+DAY_NAMES = ["월", "화", "수", "목", "금"]
+
+
+async def get_school_weekly_timetable(
+    *,
+    school_kind: str,
+    education_office_code: str,
+    school_code: str,
+    grade: str,
+    class_nm: str,
+    date: Optional[str] = None,
+):
+    api_key = get_neis_api_key()
+    base_date = date or get_today_yyyymmdd()
+    week_dates = get_week_dates(base_date)
+
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        results = await asyncio.gather(
+            *[
+                _get_single_day_timetable(
+                    client=client,
+                    api_key=api_key,
+                    school_kind=school_kind,
+                    education_office_code=education_office_code,
+                    school_code=school_code,
+                    grade=grade,
+                    class_nm=class_nm,
+                    date=d,
+                )
+                for d in week_dates
+            ],
+            return_exceptions=True,
+        )
+
+    school_name = None
+    school_year = None
+    semester = None
+    weekly_timetable = []
+
+    for day_name, day_date, result in zip(DAY_NAMES, week_dates, results):
+        if isinstance(result, Exception):
+            weekly_timetable.append({
+                "day": day_name,
+                "date": day_date,
+                "count": 0,
+                "timetable": [],
+            })
+        else:
+            if school_name is None:
+                school_name = result["school_name"]
+                school_year = result["school_year"]
+                semester = result["semester"]
+            weekly_timetable.append({
+                "day": day_name,
+                "date": day_date,
+                "count": result["count"],
+                "timetable": result["timetable"],
+            })
+
+    return {
+        "school_name": school_name,
+        "school_year": school_year,
+        "semester": semester,
+        "grade": grade,
+        "class_nm": class_nm,
+        "week_start": week_dates[0],
+        "week_end": week_dates[4],
+        "weekly_timetable": weekly_timetable,
     }

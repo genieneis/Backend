@@ -8,6 +8,7 @@ from services.neis.neis_school import (
 )
 from services.neis.neis_timetable import (
     get_school_timetable,
+    get_school_weekly_timetable,
 )
 
 router = APIRouter(
@@ -33,6 +34,34 @@ async def search_local_schools(
     return search_schools_from_temp_db(
         keyword=keyword,
     )
+
+@router.get("/timetable/weekly")
+async def get_user_weekly_timetable(
+    school_kind: str = Query(
+        ...,
+        description="학교급: elementary, middle, high 키워드 중 하나",
+    ),
+    education_office_code: str = Query(..., description="시도교육청코드, 예: B10"),
+    school_code: str = Query(..., description="행정표준코드, 예: 7130165"),
+    grade: str = Query(..., description="학년, 예: 1"),
+    class_nm: str = Query(..., description="학급명, 예: 3"),
+    date: Optional[str] = Query(
+        None,
+        description="기준 날짜 YYYYMMDD. 생략하면 오늘 날짜 기준으로 해당 주 월~금 반환",
+    ),
+):
+    """
+    초/중/고 통합 주간(월~금) 시간표 조회 API
+    """
+    return await get_school_weekly_timetable(
+        school_kind=school_kind,
+        education_office_code=education_office_code,
+        school_code=school_code,
+        grade=grade,
+        class_nm=class_nm,
+        date=date,
+    )
+
 
 @router.get("/timetable")
 async def get_user_timetable(
