@@ -4,10 +4,12 @@ from collections.abc import AsyncGenerator
 from dataclasses import dataclass
 from enum import Enum
 
-import websockets
+import grpc
 from fastapi import HTTPException
 
-CLOVA_SPEECH_WS_URL = "wss://clovaspeech-gw.ncloud.com/external-wss/v1/streaming"
+from . import nest_pb2, nest_pb2_grpc
+
+CLOVA_SPEECH_HOST = "clovaspeech-gw.ncloud.com:50051"
 
 
 class ResultType(str, Enum):
@@ -31,62 +33,53 @@ def get_clova_secret_key() -> str:
     return key
 
 
+async def _build_requests(
+    audio_chunks: AsyncGenerator[bytes, None],
+    language: str,
+) -> AsyncGenerator[nest_pb2.NestRequest, None]:
+    yield nest_pb2.NestRequest(
+        type=nest_pb2.RequestType.CONFIG,
+        config=nest_pb2.NestConfig(
+            config=json.dumps({"transcription": {"language": language}})
+        ),
+    )
+
+    async for chunk in audio_chunks:
+        yield nest_pb2.NestRequest(
+            type=nest_pb2.RequestType.DATA,
+            data=nest_pb2.NestData(
+                chunk=chunk,
+                extra_contents=json.dumps({"seqId": 0, "epFlag": False}),
+            ),
+        )
+
+
 async def stream_clova_stt(
     audio_chunks: AsyncGenerator[bytes, None],
-    sample_rate: int = 16000,
-    language: str = "ko-KR",
+    language: str = "ko",
 ) -> AsyncGenerator[SttResult, None]:
-    """
-    Clova Speech Streaming API에 음성 청크를 전달하고 STT 결과를 yield합니다.
-
-    Clova Speech WebSocket 프로토콜:
-    1. 연결 후 최초 메시지로 config JSON 전송
-    2. 이후 binary 음성 데이터 전송
-    3. 서버에서 partial/final 결과 JSON 수신
-    4. 종료 시 빈 binary 프레임 전송
-    """
     secret_key = get_clova_secret_key()
+    metadata = (("authorization", f"Bearer {secret_key}"),)
 
-    headers = {"x-clovaspeech-api-key": secret_key}
+    async with grpc.aio.secure_channel(
+        CLOVA_SPEECH_HOST,
+        grpc.ssl_channel_credentials(),
+    ) as channel:
+        stub = nest_pb2_grpc.NestServiceStub(channel)
 
-    config = {
-        "transcription": {
-            "language": language,
-        },
-        "audioFormat": {
-            "sampleRate": sample_rate,
-            "encoding": "PCM",
-            "channels": 1,
-        },
-    }
+        async for response in stub.recognize(
+            _build_requests(audio_chunks, language),
+            metadata=metadata,
+        ):
+            try:
+                data = json.loads(response.contents)
+            except (json.JSONDecodeError, ValueError):
+                continue
 
-    async with websockets.connect(CLOVA_SPEECH_WS_URL, extra_headers=headers) as ws:
-        await ws.send(json.dumps(config))
+            response_types = data.get("responseType", [])
 
-        async def _send_audio():
-            async for chunk in audio_chunks:
-                await ws.send(chunk)
-            await ws.send(b"")  # 종료 신호
-
-        import asyncio
-
-        send_task = asyncio.create_task(_send_audio())
-
-        try:
-            async for raw_message in ws:
-                if isinstance(raw_message, bytes):
-                    continue
-
-                message = json.loads(raw_message)
-                result_type = message.get("type")
-                text = message.get("text", "").strip()
-
-                if not text:
-                    continue
-
-                if result_type == "partial":
-                    yield SttResult(type=ResultType.PARTIAL, text=text)
-                elif result_type == "final":
+            if "transcription" in response_types:
+                transcription = data.get("transcription", {})
+                text = transcription.get("text", "").strip()
+                if text:
                     yield SttResult(type=ResultType.FINAL, text=text)
-        finally:
-            send_task.cancel()
