@@ -3,6 +3,10 @@ import os
 import sys
 import wave
 
+
+# - WAV 파일 → Clova Speech gRPC 직접 호출
+# - STT 자체가 정상 작동하는지 확인
+
 sys.path.insert(0, os.path.dirname(__file__))
 
 from dotenv import load_dotenv

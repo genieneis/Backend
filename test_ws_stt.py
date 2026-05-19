@@ -2,6 +2,10 @@ import asyncio
 import wave
 import websockets
 
+
+# WAV 파일 → FastAPI WebSocket 엔드포인트 → Clova Speech gRPC
+# 서버 API 전체 파이프라인이 정상 작동하는지 확인
+
 WS_URL = (
     "ws://localhost:8000/ws/stt"
     "?school_kind=high"
