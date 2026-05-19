@@ -180,10 +180,10 @@ async def fetch_timetable_page(
 
         url = NEIS_BASE_URL + config["endpoint"]
         response_key = config["response_key"]
-        response = await client.get(
-            url,
-            params=params,
-        )
+        debug_params = {k: v for k, v in params.items() if k != "KEY"}
+        debug_request = client.build_request("GET", url, params=debug_params)
+        print(f"[NEIS] request url: {debug_request.url}")
+        response = await client.get(url, params=params)
         response.raise_for_status()
     except httpx.HTTPStatusError as e:
         raise HTTPException(
