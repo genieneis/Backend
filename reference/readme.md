@@ -32,3 +32,6 @@ FastAPI 서버
 Flutter / Web
   ↓
 실시간 자막 + 핵심 개념 하이라이트 표시
+
+
+reference/curriculum_subjects_by_level 에는 과목별 보정용으로 사용할 데이터 예시가 들어있어. 이런 데이터가 학년별/과목별로 많이 준비되어있어
