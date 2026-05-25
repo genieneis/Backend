@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Query
 
+from services.neis.types import SchoolKind
 from services.neis.neis_school import (
     save_all_schools_to_temp_db,
     search_schools_from_temp_db,
@@ -36,10 +37,7 @@ async def search_local_schools(
 
 @router.get("/classes")
 async def get_classes(
-    school_kind: str = Query(
-        ...,
-        description="학교급: elementary, middle, high 키워드 중 하나",
-    ),
+    school_kind: SchoolKind = Query(..., description="학교급"),
     education_office_code: str = Query(..., description="시도교육청코드, 예: B10"),
     school_code: str = Query(..., description="행정표준코드, 예: 7010227"),
     grade: str = Query(..., description="학년, 예: 1"),
@@ -62,10 +60,7 @@ async def get_classes(
 
 @router.get("/timetable/weekly")
 async def get_user_weekly_timetable(
-    school_kind: str = Query(
-        ...,
-        description="학교급: elementary, middle, high 키워드 중 하나",
-    ),
+    school_kind: SchoolKind = Query(..., description="학교급"),
     education_office_code: str = Query(..., description="시도교육청코드, 예: B10"),
     school_code: str = Query(..., description="행정표준코드, 예: 7130165"),
     grade: str = Query(..., description="학년, 예: 1"),
@@ -90,10 +85,7 @@ async def get_user_weekly_timetable(
 
 @router.get("/timetable")
 async def get_user_timetable(
-    school_kind: str = Query(
-        ...,
-        description="학교급: elementary, middle, high 키워드 중 하나",
-    ),
+    school_kind: SchoolKind = Query(..., description="학교급"),
     education_office_code: str = Query(..., description="시도교육청코드, 예: B10"),
     school_code: str = Query(..., description="행정표준코드, 예: 7130165"),
     grade: str = Query(..., description="학년, 예: 1"),
