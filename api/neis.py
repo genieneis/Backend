@@ -7,6 +7,7 @@ from services.neis.neis_school import (
     search_schools_from_temp_db,
 )
 from services.neis.neis_timetable import (
+    get_class_list,
     get_school_timetable,
     get_school_weekly_timetable,
 )
@@ -34,6 +35,32 @@ async def search_local_schools(
     return search_schools_from_temp_db(
         keyword=keyword,
     )
+
+@router.get("/timetable/classes")
+async def get_classes(
+    school_kind: str = Query(
+        ...,
+        description="학교급: elementary, middle, high 키워드 중 하나",
+    ),
+    education_office_code: str = Query(..., description="시도교육청코드, 예: B10"),
+    school_code: str = Query(..., description="행정표준코드, 예: 7010227"),
+    grade: str = Query(..., description="학년, 예: 1"),
+    date: Optional[str] = Query(
+        None,
+        description="기준 날짜 YYYYMMDD. 생략하면 오늘 날짜 기준",
+    ),
+):
+    """
+    학교/학년에 해당하는 반 목록 조회 API
+    """
+    return await get_class_list(
+        school_kind=school_kind,
+        education_office_code=education_office_code,
+        school_code=school_code,
+        grade=grade,
+        date=date,
+    )
+
 
 @router.get("/timetable/weekly")
 async def get_user_weekly_timetable(

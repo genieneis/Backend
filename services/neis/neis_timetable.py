@@ -150,10 +150,10 @@ async def fetch_timetable_page(
     school_code: str,
     school_year: str,
     grade: str,
-    class_nm: str,
     date: str,
     page_index: int,
     page_size: int,
+    class_nm: Optional[str] = None,
 ) -> tuple[list[dict[str, Any]], int]:
     params: dict[str, Any] = {
         "KEY": api_key,
@@ -165,8 +165,10 @@ async def fetch_timetable_page(
         "AY": school_year,
         "ALL_TI_YMD": date,
         "GRADE": grade,
-        "CLASS_NM": class_nm,
     }
+
+    if class_nm is not None:
+        params["CLASS_NM"] = class_nm
 
 
     try:
@@ -356,4 +358,56 @@ async def get_school_weekly_timetable(
         "week_start": week_dates[0],
         "week_end": week_dates[4],
         "weekly_timetable": weekly_timetable,
+    }
+
+
+async def get_class_list(
+    *,
+    school_kind: str,
+    education_office_code: str,
+    school_code: str,
+    grade: str,
+):
+    api_key = get_neis_api_key()
+    target_date = date or get_today_yyyymmdd()
+    school_year = get_school_year(target_date)
+
+    page_index = 1
+    page_size = 1000
+    all_rows: list[dict[str, Any]] = []
+
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        while True:
+            rows, total_count = await fetch_timetable_page(
+                client=client,
+                api_key=api_key,
+                school_kind=school_kind,
+                education_office_code=education_office_code,
+                school_code=school_code,
+                school_year=school_year,
+                grade=grade,
+                date=target_date,
+                page_index=page_index,
+                page_size=page_size,
+            )
+
+            if not rows:
+                break
+
+            all_rows.extend(rows)
+
+            if len(all_rows) >= total_count:
+                break
+
+            page_index += 1
+
+    school_name = all_rows[0].get("SCHUL_NM") if all_rows else None
+    classes = sorted({row["CLASS_NM"] for row in all_rows if row.get("CLASS_NM")})
+
+    return {
+        "school_name": school_name,
+        "school_year": school_year,
+        "grade": grade,
+        "count": len(classes),
+        "classes": classes,
     }
