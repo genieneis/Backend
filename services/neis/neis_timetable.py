@@ -367,6 +367,7 @@ async def get_class_list(
     education_office_code: str,
     school_code: str,
     grade: str,
+    date: Optional[str] = None,
 ):
     api_key = get_neis_api_key()
     target_date = date or get_today_yyyymmdd()
