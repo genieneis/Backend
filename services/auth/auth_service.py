@@ -1,7 +1,7 @@
 from fastapi import HTTPException
 from supabase_auth.errors import AuthApiError, AuthWeakPasswordError
 
-from services.db.supabase_client import get_supabase, get_supabase_admin
+from services.db.supabase import get_supabase, get_supabase_admin
 
 
 async def sign_up(
