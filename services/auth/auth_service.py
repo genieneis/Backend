@@ -1,7 +1,7 @@
 from fastapi import HTTPException
 from supabase_auth.errors import AuthApiError, AuthWeakPasswordError
 
-from services.db.supabase import get_supabase, get_supabase_admin
+from services.db.supabase import get_supabase
 
 
 async def sign_up(
@@ -17,7 +17,6 @@ async def sign_up(
     class_nm: str,
 ) -> dict:
     client = get_supabase()
-    client_admin = get_supabase_admin()
 
     try:
         auth_response = client.auth.sign_up({
@@ -34,7 +33,7 @@ async def sign_up(
         raise HTTPException(status_code=400, detail="회원가입에 실패했습니다.")
 
     try:
-        client_admin.table("profiles").insert({
+        client.table("profiles").insert({
             "id": user.id,
             "name": name,
             "school_kind": school_kind,
