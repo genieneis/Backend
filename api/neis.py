@@ -36,7 +36,7 @@ async def search_local_schools(
         keyword=keyword,
     )
 
-@router.get("/timetable/classes")
+@router.get("/classes")
 async def get_classes(
     school_kind: str = Query(
         ...,
