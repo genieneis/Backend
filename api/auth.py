@@ -39,3 +39,16 @@ async def signup(body: SignUpRequest):
         grade=body.grade,
         class_nm=body.class_nm,
     )
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+
+@router.post("/login")
+async def login(body: LoginRequest):
+    """
+    로그인 API.
+    성공 시 access_token, refresh_token 반환.
+    """
+    return await sign_in(email=body.email, password=body.password)

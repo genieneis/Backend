@@ -51,3 +51,40 @@ async def sign_up(
         "user_id": user.id,
         "email": user.email,
     }
+
+async def sign_in(*, email: str, password: str) -> dict:
+    client = get_supabase()
+
+    try:
+        auth_response = client.auth.sign_in_with_password({
+            "email": email,
+            "password": password,
+        })
+    except AuthApiError as e:
+        raise HTTPException(status_code=401, detail=str(e.message)) from e
+
+    session = auth_response.session
+    user = auth_response.user
+
+    profile_response = client.table("profiles").select("*").eq("id", user.id).maybe_single().execute()
+    profile = profile_response.data if profile_response else None
+
+    if not profile:
+        raise HTTPException(status_code=404, detail="유저 정보를 찾을 수 없습니다.")
+
+    return {
+        "access_token": session.access_token,
+        "refresh_token": session.refresh_token,
+        "token_type": "bearer",
+        "user": {
+            "user_id": user.id,
+            "email": user.email,
+            "name": profile.get("name"),
+            "school_kind": profile.get("school_kind"),
+            "education_office_code": profile.get("education_office_code"),
+            "school_code": profile.get("school_code"),
+            "school_name": profile.get("school_name"),
+            "grade": profile.get("grade"),
+            "class_nm": profile.get("class_nm"),
+        },
+    }
