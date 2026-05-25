@@ -1,7 +1,7 @@
 from fastapi import HTTPException
 from supabase_auth.errors import AuthApiError, AuthWeakPasswordError
 
-from services.db.supabase import get_supabase
+from services.db.supabase import get_supabase, get_supabase_admin
 
 
 async def sign_up(
@@ -87,3 +87,23 @@ async def sign_in(*, email: str, password: str) -> dict:
             "class_nm": profile.get("class_nm"),
         },
     }
+
+async def delete_user(*, token: str) -> dict:
+    client = get_supabase()
+    admin_client = get_supabase_admin()
+
+    try:
+        user_response = client.auth.get_user(token)
+    except AuthApiError as e:
+        raise HTTPException(status_code=401, detail=str(e.message)) from e
+
+    user = user_response.user
+    if not user:
+        raise HTTPException(status_code=401, detail="유효하지 않은 토큰입니다.")
+
+    try:
+        admin_client.auth.admin.delete_user(user.id)
+    except AuthApiError as e:
+        raise HTTPException(status_code=500, detail=f"회원 탈퇴 실패: {str(e.message)}") from e
+
+    return {"message": "회원 탈퇴가 완료되었습니다."}
