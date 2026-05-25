@@ -1,6 +1,5 @@
 import json
 import os
-from typing import Optional
 
 import anthropic
 from fastapi import HTTPException
@@ -67,7 +66,7 @@ def get_anthropic_client() -> anthropic.Anthropic:
 
 async def process_stt_text(
     text: str,
-    subject: Optional[str] = None,
+    subject: str | None = None,
 ) -> LlmProcessResult:
     """
     STT final 텍스트를 LLM으로 보정하고 중요도 태그를 추출합니다.

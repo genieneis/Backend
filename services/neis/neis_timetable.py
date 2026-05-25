@@ -1,7 +1,7 @@
 import asyncio
 import os
 from datetime import datetime, timedelta
-from typing import Any, Optional
+from typing import Any
 from zoneinfo import ZoneInfo
 
 import httpx
@@ -153,7 +153,7 @@ async def fetch_timetable_page(
     date: str,
     page_index: int,
     page_size: int,
-    class_nm: Optional[str] = None,
+    class_nm: str | None = None,
 ) -> tuple[list[dict[str, Any]], int]:
     params: dict[str, Any] = {
         "KEY": api_key,
@@ -265,7 +265,7 @@ async def get_school_timetable(
     school_code: str,
     grade: str,
     class_nm: str,
-    date: Optional[str] = None,
+    date: str | None = None,
 ):
     api_key = get_neis_api_key()
     target_date = date or get_today_yyyymmdd()
@@ -300,7 +300,7 @@ async def get_school_weekly_timetable(
     school_code: str,
     grade: str,
     class_nm: str,
-    date: Optional[str] = None,
+    date: str | None = None,
 ):
     api_key = get_neis_api_key()
     base_date = date or get_today_yyyymmdd()
@@ -367,7 +367,7 @@ async def get_class_list(
     education_office_code: str,
     school_code: str,
     grade: str,
-    date: Optional[str] = None,
+    date: str | None = None,
 ):
     api_key = get_neis_api_key()
     target_date = date or get_today_yyyymmdd()

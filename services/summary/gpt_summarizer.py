@@ -1,7 +1,6 @@
 import json
 import os
 from dataclasses import dataclass, field
-from typing import Optional
 
 from fastapi import HTTPException
 from openai import AsyncOpenAI, RateLimitError, APIStatusError
@@ -30,8 +29,8 @@ class LessonSummary:
     summary: str
     key_concepts: list[str] = field(default_factory=list)
     important_points: list[str] = field(default_factory=list)
-    homework: Optional[str] = None
-    test_info: Optional[str] = None
+    homework: str | None = None
+    test_info: str | None = None
 
 
 def get_gpt_client() -> AsyncOpenAI:

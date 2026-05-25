@@ -1,5 +1,3 @@
-from typing import Optional
-
 from fastapi import APIRouter, Query
 
 from services.neis.neis_school import (
@@ -45,7 +43,7 @@ async def get_classes(
     education_office_code: str = Query(..., description="시도교육청코드, 예: B10"),
     school_code: str = Query(..., description="행정표준코드, 예: 7010227"),
     grade: str = Query(..., description="학년, 예: 1"),
-    date: Optional[str] = Query(
+    date: str | None = Query(
         None,
         description="기준 날짜 YYYYMMDD. 생략하면 오늘 날짜 기준",
     ),
@@ -72,7 +70,7 @@ async def get_user_weekly_timetable(
     school_code: str = Query(..., description="행정표준코드, 예: 7130165"),
     grade: str = Query(..., description="학년, 예: 1"),
     class_nm: str = Query(..., description="학급명, 예: 3"),
-    date: Optional[str] = Query(
+    date: str | None = Query(
         None,
         description="기준 날짜 YYYYMMDD. 생략하면 오늘 날짜 기준으로 해당 주 월~금 반환",
     ),
@@ -100,7 +98,7 @@ async def get_user_timetable(
     school_code: str = Query(..., description="행정표준코드, 예: 7130165"),
     grade: str = Query(..., description="학년, 예: 1"),
     class_nm: str = Query(..., description="학급명, 예: 3"),
-    date: Optional[str] = Query(
+    date: str | None = Query(
         None,
         description="시간표 일자 YYYYMMDD. 생략하면 오늘 날짜 기준",
     ),

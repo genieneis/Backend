@@ -1,8 +1,6 @@
 from datetime import time
 from zoneinfo import ZoneInfo
 from datetime import datetime
-from typing import Optional
-
 from services.neis.neis_timetable import get_school_timetable
 
 # 일반적인 중·고등학교 교시별 시간 (시작, 종료)
@@ -18,7 +16,7 @@ DEFAULT_PERIODS: list[tuple[time, time]] = [
 ]
 
 
-def get_current_period(now: Optional[datetime] = None) -> Optional[int]:
+def get_current_period(now: datetime | None = None) -> int | None:
     """현재 시각 기준 교시(1~7) 반환. 수업 중이 아니면 None."""
     if now is None:
         now = datetime.now(ZoneInfo("Asia/Seoul"))
@@ -39,8 +37,8 @@ async def get_current_subject(
     school_code: str,
     grade: str,
     class_nm: str,
-    now: Optional[datetime] = None,
-) -> Optional[str]:
+    now: datetime | None = None,
+) -> str | None:
     """현재 교시에 해당하는 과목명 반환. 수업 중이 아니거나 시간표 없으면 None."""
     period = get_current_period(now)
     if period is None:

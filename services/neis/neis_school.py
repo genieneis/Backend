@@ -1,7 +1,7 @@
 import json
 import os
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import httpx
 from fastapi import HTTPException
