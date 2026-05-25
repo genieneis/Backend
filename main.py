@@ -4,12 +4,14 @@ from fastapi.middleware.cors import CORSMiddleware
 
 load_dotenv()
 
+from api.auth import router as auth_router
 from api.neis import router as neis_router
 from api.stt import router as stt_router
 from api.summary import router as summary_router
 
 app = FastAPI()
 
+app.include_router(auth_router)
 app.include_router(neis_router)
 app.include_router(stt_router)
 app.include_router(summary_router)
