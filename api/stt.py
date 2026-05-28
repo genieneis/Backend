@@ -14,11 +14,20 @@ router = APIRouter(
 
 
 async def _audio_chunks_from_ws(ws: WebSocket) -> AsyncGenerator[bytes, None]:
-    """WebSocket에서 binary 음성 청크를 yield합니다. text 메시지는 무시합니다."""
+    """WebSocket에서 binary 음성 청크를 yield합니다.
+    {"type": "end"} 텍스트 메시지를 받으면 정상 종료합니다 (연결은 유지).
+    """
     while True:
         message = await ws.receive()
         if message["type"] == "websocket.disconnect":
             return
+        if "text" in message and message["text"]:
+            try:
+                data = json.loads(message["text"])
+                if data.get("type") == "end":
+                    return
+            except (json.JSONDecodeError, ValueError):
+                pass
         if "bytes" in message and message["bytes"]:
             yield message["bytes"]
 
