@@ -1,5 +1,6 @@
 import asyncio
 import os
+from collections import Counter
 from datetime import datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -357,6 +358,147 @@ async def get_school_weekly_timetable(
         "class_nm": class_nm,
         "week_start": week_dates[0],
         "week_end": week_dates[4],
+        "weekly_timetable": weekly_timetable,
+    }
+
+
+async def fetch_timetable_range_page(
+    *,
+    client: httpx.AsyncClient,
+    api_key: str,
+    school_kind: str,
+    education_office_code: str,
+    school_code: str,
+    school_year: str,
+    grade: str,
+    class_nm: str,
+    from_date: str,
+    to_date: str,
+    page_index: int,
+    page_size: int,
+) -> tuple[list[dict[str, Any]], int]:
+    config = TIMETABLE_CONFIG.get(school_kind)
+    if not config:
+        raise HTTPException(
+            status_code=400,
+            detail="school_kind는 elementary, middle, high 중 하나여야 합니다.",
+        )
+
+    params: dict[str, Any] = {
+        "KEY": api_key,
+        "Type": "json",
+        "pIndex": page_index,
+        "pSize": page_size,
+        "ATPT_OFCDC_SC_CODE": education_office_code,
+        "SD_SCHUL_CODE": school_code,
+        "AY": school_year,
+        "GRADE": grade,
+        "CLASS_NM": class_nm,
+        "TI_FROM_YMD": from_date,
+        "TI_TO_YMD": to_date,
+    }
+
+    url = NEIS_BASE_URL + config["endpoint"]
+    try:
+        response = await client.get(url, params=params)
+        response.raise_for_status()
+    except httpx.HTTPStatusError as e:
+        raise HTTPException(
+            status_code=502,
+            detail=f"NEIS 시간표 API HTTP 오류: {e.response.status_code}",
+        ) from e
+    except httpx.RequestError as e:
+        raise HTTPException(
+            status_code=502,
+            detail=f"NEIS 시간표 API 요청 실패: {str(e)}",
+        ) from e
+
+    return extract_timetable_rows(response.json(), response_key=config["response_key"])
+
+
+async def get_school_regular_timetable(
+    *,
+    school_kind: str,
+    education_office_code: str,
+    school_code: str,
+    grade: str,
+    class_nm: str,
+) -> dict[str, Any]:
+    """
+    해당 학년도 3월(3/2~3/31) 시간표 데이터를 기반으로
+    요일/교시별 최빈 과목을 정규 시간표로 반환합니다.
+    """
+    api_key = get_neis_api_key()
+    school_year = get_school_year(get_today_yyyymmdd())
+    from_date = f"{school_year}0302"
+    to_date = f"{school_year}0331"
+
+    all_rows: list[dict[str, Any]] = []
+    page_index = 1
+    page_size = 1000
+
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        while True:
+            rows, total_count = await fetch_timetable_range_page(
+                client=client,
+                api_key=api_key,
+                school_kind=school_kind,
+                education_office_code=education_office_code,
+                school_code=school_code,
+                school_year=school_year,
+                grade=grade,
+                class_nm=class_nm,
+                from_date=from_date,
+                to_date=to_date,
+                page_index=page_index,
+                page_size=page_size,
+            )
+            if not rows:
+                break
+            all_rows.extend(rows)
+            if len(all_rows) >= total_count:
+                break
+            page_index += 1
+
+    school_name = all_rows[0].get("SCHUL_NM") if all_rows else None
+
+    # (요일 인덱스, 교시) → 과목 카운터
+    slot_counter: dict[tuple[int, str], Counter] = {}
+    for row in all_rows:
+        date_str = row.get("ALL_TI_YMD", "")
+        period = row.get("PERIO", "")
+        subject = row.get("ITRT_CNTNT", "")
+        if not date_str or not period or not subject:
+            continue
+        weekday = datetime.strptime(date_str, "%Y%m%d").weekday()
+        if weekday >= 5:
+            continue
+        key = (weekday, period)
+        slot_counter.setdefault(key, Counter())[subject] += 1
+
+    # 요일별 정규 시간표 구성 (최빈 과목이 전체의 40% 이상일 때만 채택)
+    fixed: dict[int, list[dict[str, Any]]] = {i: [] for i in range(5)}
+    for (weekday, period), counter in slot_counter.items():
+        mode_subject, mode_count = counter.most_common(1)[0]
+        total = sum(counter.values())
+        if mode_count / total >= 0.4:
+            fixed[weekday].append({"period": period, "subject": mode_subject})
+
+    for slots in fixed.values():
+        slots.sort(key=lambda x: int(x["period"]) if x["period"].isdigit() else 0)
+
+    weekly_timetable = [
+        {"day": day_name, "count": len(fixed[i]), "timetable": fixed[i]}
+        for i, day_name in enumerate(DAY_NAMES)
+    ]
+
+    return {
+        "school_name": school_name,
+        "school_year": school_year,
+        "grade": grade,
+        "class_nm": class_nm,
+        "reference_from": from_date,
+        "reference_to": to_date,
         "weekly_timetable": weekly_timetable,
     }
 
