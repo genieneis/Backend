@@ -1,44 +1,41 @@
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from supabase_auth.errors import AuthApiError
 
+from dependencies import get_current_token, get_current_user_id
 from services.db.supabase import get_supabase
-from services.lectures.lectures import save_lecture_stt_transcript, save_lesson_summary, summarize_lesson
-
+from services.lectures.lectures import get_user_transcripts, save_lecture_stt_transcript, save_lesson_summary, summarize_lesson
 
 router = APIRouter(
     prefix="/api/lectures",
     tags=["Lectures"],
 )
 
-_bearer = HTTPBearer()
-
 MAX_FILE_SIZE = 3 * 1024 * 1024  # 3MB
+
+
+@router.get("/stt-transcripts")
+async def list_user_transcripts(
+    user_id: str = Depends(get_current_user_id),
+    token: str = Depends(get_current_token),
+):
+    """
+    로그인한 사용자의 STT 노트 목록을 AI 요약 포함하여 반환합니다.
+    """
+    transcripts = await get_user_transcripts(user_id=user_id, token=token)
+    return {"transcripts": transcripts}
 
 
 @router.post("/stt-transcript", status_code=201)
 async def upload_lecture_stt_transcript(
     file: UploadFile = File(..., description="STT 변환 텍스트 파일 (.txt)"),
     subject: str | None = Form(None, description="과목명"),
-    credentials: HTTPAuthorizationCredentials = Depends(_bearer),
+    user_id: str = Depends(get_current_user_id),
+    token: str = Depends(get_current_token),
 ):
     """
     강의 STT 변환 텍스트 파일을 업로드하여 DB에 저장.
-
-    - Authorization 헤더에 Bearer 토큰 필요
     - .txt 파일만 허용, 최대 3MB
     """
-    client = get_supabase()
-
-    try:
-        user_response = client.auth.get_user(credentials.credentials)
-    except AuthApiError as e:
-        raise HTTPException(status_code=401, detail=str(e.message)) from e
-
-    user = user_response.user
-    if not user:
-        raise HTTPException(status_code=401, detail="유효하지 않은 토큰입니다.")
-
     if not file.filename or not file.filename.endswith(".txt"):
         raise HTTPException(status_code=400, detail=".txt 파일만 업로드할 수 있습니다.")
 
@@ -56,32 +53,25 @@ async def upload_lecture_stt_transcript(
         raise HTTPException(status_code=400, detail="파일 내용이 비어 있습니다.")
 
     return await save_lecture_stt_transcript(
-        user_id=user.id,
+        user_id=user_id,
         filename=file.filename,
         content=content,
         subject=subject,
-        token=credentials.credentials,
+        token=token,
     )
+
 
 @router.post("/stt-transcript/{transcript_id}/summary", status_code=201)
 async def create_lesson_summary(
     transcript_id: str,
-    credentials: HTTPAuthorizationCredentials = Depends(_bearer),
+    token: str = Depends(get_current_token),
 ):
     """
     저장된 STT 트랜스크립트를 기반으로 AI 요약을 생성하고 lesson_stt_summaries에 저장합니다.
     """
     supabase = get_supabase()
+    supabase.postgrest.auth(token)
 
-    try:
-        user_response = supabase.auth.get_user(credentials.credentials)
-    except AuthApiError as e:
-        raise HTTPException(status_code=401, detail=str(e.message)) from e
-
-    if not user_response.user:
-        raise HTTPException(status_code=401, detail="유효하지 않은 토큰입니다.")
-
-    supabase.postgrest.auth(credentials.credentials)
     try:
         row = (
             supabase.table("lesson_stt_transcripts")
@@ -98,11 +88,7 @@ async def create_lesson_summary(
         raise HTTPException(status_code=400, detail="트랜스크립트 내용이 비어 있습니다.")
 
     result = await summarize_lesson(stt_text)
-    await save_lesson_summary(
-        transcript_id=transcript_id,
-        summary=result,
-        token=credentials.credentials,
-    )
+    await save_lesson_summary(transcript_id=transcript_id, summary=result, token=token)
 
     return {
         "topic": result.topic,
