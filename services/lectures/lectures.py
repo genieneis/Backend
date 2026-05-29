@@ -6,6 +6,43 @@ from openai import AsyncOpenAI, RateLimitError, APIStatusError
 from services.db.supabase import get_supabase
 
 
+async def get_user_transcripts(*, user_id: str, token: str) -> list[dict]:
+    client = get_supabase()
+    client.postgrest.auth(token)
+
+    try:
+        response = (
+            client.table("lesson_stt_transcripts")
+            .select("id, subject, filename, content, created_at, lesson_stt_summaries(id, content)")
+            .eq("user_id", user_id)
+            .order("created_at", desc=True)
+            .execute()
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"노트 조회 실패: {str(e)}") from e
+
+    result = []
+    for row in response.data:
+        summary_row = (row.get("lesson_stt_summaries") or [None])[0]
+        summary = None
+        if summary_row:
+            try:
+                summary = json.loads(summary_row["content"])
+            except (json.JSONDecodeError, KeyError):
+                pass
+
+        result.append({
+            "id": row["id"],
+            "subject": row.get("subject"),
+            "filename": row.get("filename"),
+            "content": row["content"],
+            "created_at": row["created_at"],
+            "summary": summary,
+        })
+
+    return result
+
+
 async def save_lesson_summary(*, transcript_id: str, summary: "LessonSummary", token: str) -> dict:
     client = get_supabase()
     client.postgrest.auth(token)
