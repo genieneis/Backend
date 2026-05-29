@@ -6,6 +6,8 @@ from typing import Any
 import httpx
 from fastapi import HTTPException
 
+from .types import get_school_kind_category
+
 NEIS_SCHOOL_INFO_URL = "https://open.neis.go.kr/hub/schoolInfo"
 
 TEMP_DB_PATH = Path("temp_db.txt")
@@ -186,7 +188,10 @@ def search_schools_from_temp_db(*, keyword: str):
         school_name = school.get("school_name") or ""
 
         if keyword in school_name:
-            results.append(school)
+            results.append({
+                **school,
+                "school_kind": get_school_kind_category(school.get("school_kind")),
+            })
 
     return {
         "keyword": keyword,
