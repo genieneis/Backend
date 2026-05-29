@@ -15,6 +15,8 @@ async def sign_up(
     school_name: str | None,
     grade: str,
     class_nm: str,
+    first_period_start_time: str | None = None,
+    fifth_period_start_time: str | None = None,
 ) -> dict:
     client = get_supabase()
 
@@ -33,7 +35,7 @@ async def sign_up(
         raise HTTPException(status_code=400, detail="회원가입에 실패했습니다.")
 
     try:
-        client.table("profiles").insert({
+        row = {
             "id": user.id,
             "name": name,
             "school_kind": school_kind,
@@ -42,7 +44,12 @@ async def sign_up(
             "school_name": school_name,
             "grade": grade,
             "class_nm": class_nm,
-        }).execute()
+        }
+        if first_period_start_time:
+            row["first_period_start_time"] = first_period_start_time
+        if fifth_period_start_time:
+            row["fifth_period_start_time"] = fifth_period_start_time
+        client.table("profiles").insert(row).execute()
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"회원정보 저장 실패: {str(e)}") from e
 
@@ -85,6 +92,8 @@ async def sign_in(*, email: str, password: str) -> dict:
             "school_name": profile.get("school_name"),
             "grade": profile.get("grade"),
             "class_nm": profile.get("class_nm"),
+            "first_period_start_time": profile.get("first_period_start_time"),
+            "fifth_period_start_time": profile.get("fifth_period_start_time"),
         },
     }
 
