@@ -6,18 +6,47 @@ from openai import AsyncOpenAI, RateLimitError, APIStatusError
 from services.db.supabase import get_supabase
 
 
-async def save_lecture_stt_transcript(*, user_id: str, filename: str, content: str, token: str) -> dict:
+async def save_lesson_summary(*, transcript_id: str, summary: "LessonSummary", token: str) -> dict:
     client = get_supabase()
     client.postgrest.auth(token)
+
+    content = json.dumps({
+        "topic": summary.topic,
+        "summary": summary.summary,
+        "key_concepts": summary.key_concepts,
+        "important_points": summary.important_points,
+        "homework": summary.homework,
+        "test_info": summary.test_info,
+    }, ensure_ascii=False)
+
+    try:
+        response = (
+            client.table("lesson_stt_summaries")
+            .insert({"transcript_id": transcript_id, "content": content})
+            .execute()
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"요약 저장 실패: {str(e)}") from e
+
+    record = response.data[0] if response.data else None
+    if not record:
+        raise HTTPException(status_code=500, detail="요약 저장 실패: 저장된 데이터가 없습니다.")
+
+    return record
+
+
+async def save_lecture_stt_transcript(*, user_id: str, filename: str, content: str, subject: str | None = None, token: str) -> dict:
+    client = get_supabase()
+    client.postgrest.auth(token)
+
+    row: dict = {"user_id": user_id, "filename": filename, "content": content}
+    if subject:
+        row["subject"] = subject
 
     try:
         response = (
             client.table("lesson_stt_transcripts")
-            .insert({
-                "user_id": user_id,
-                "filename": filename,
-                "content": content,
-            })
+            .insert(row)
             .execute()
         )
     except Exception as e:
