@@ -21,6 +21,8 @@ class SignUpRequest(BaseModel):
     school_name: str | None = None
     grade: str
     class_nm: str
+    first_period_start_time: str | None = None
+    fifth_period_start_time: str | None = None
 
 
 @router.post("/signup", status_code=201)
@@ -39,6 +41,8 @@ async def signup(body: SignUpRequest):
         school_name=body.school_name,
         grade=body.grade,
         class_nm=body.class_nm,
+        first_period_start_time=body.first_period_start_time,
+        fifth_period_start_time=body.fifth_period_start_time,
     )
 
 class LoginRequest(BaseModel):
