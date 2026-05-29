@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, EmailStr
 
+from dependencies import get_current_user_id
 from services.auth.auth import delete_user, sign_in, sign_up
 from services.neis.types import SchoolKind
 
@@ -9,8 +9,6 @@ router = APIRouter(
     prefix="/api/auth",
     tags=["Auth"],
 )
-
-_bearer = HTTPBearer()
 
 
 class SignUpRequest(BaseModel):
@@ -58,9 +56,9 @@ async def login(body: LoginRequest):
 
 
 @router.delete("/me", status_code=200)
-async def withdraw(credentials: HTTPAuthorizationCredentials = Depends(_bearer)):
+async def withdraw(user_id: str = Depends(get_current_user_id)):
     """
     회원 탈퇴 API.
-    Authorization 헤더의 토큰으로 본인 확인 후 계정 삭제.
+    Authorization 헤더의 JWT에서 user_id를 추출하여 계정 삭제.
     """
-    return await delete_user(token=credentials.credentials)
+    return await delete_user(user_id=user_id)

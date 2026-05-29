@@ -88,21 +88,11 @@ async def sign_in(*, email: str, password: str) -> dict:
         },
     }
 
-async def delete_user(*, token: str) -> dict:
-    client = get_supabase()
+async def delete_user(*, user_id: str) -> dict:
     admin_client = get_supabase_admin()
 
     try:
-        user_response = client.auth.get_user(token)
-    except AuthApiError as e:
-        raise HTTPException(status_code=401, detail=str(e.message)) from e
-
-    user = user_response.user
-    if not user:
-        raise HTTPException(status_code=401, detail="유효하지 않은 토큰입니다.")
-
-    try:
-        admin_client.auth.admin.delete_user(user.id)
+        admin_client.auth.admin.delete_user(user_id)
     except AuthApiError as e:
         raise HTTPException(status_code=500, detail=f"회원 탈퇴 실패: {str(e.message)}") from e
 
