@@ -112,5 +112,7 @@ async def stt_raw_websocket(ws: WebSocket):
                 "text": stt_result.text,
             }, ensure_ascii=False))
 
+        await ws.send_text(json.dumps({"type": "done"}, ensure_ascii=False))
+
     except WebSocketDisconnect:
         pass
