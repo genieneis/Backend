@@ -425,13 +425,13 @@ async def get_school_regular_timetable(
     class_nm: str,
 ) -> dict[str, Any]:
     """
-    해당 학년도 3월(3/2~3/31) 시간표 데이터를 기반으로
+    해당 학년도 초반 2달치(3/2~4/30) 시간표 데이터를 기반으로
     요일/교시별 최빈 과목을 정규 시간표로 반환합니다.
     """
     api_key = get_neis_api_key()
     school_year = get_school_year(get_today_yyyymmdd())
     from_date = f"{school_year}0302"
-    to_date = f"{school_year}0331"
+    to_date = f"{school_year}0430"
 
     all_rows: list[dict[str, Any]] = []
     page_index = 1

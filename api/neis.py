@@ -68,8 +68,8 @@ async def get_user_regular_timetable(
     class_nm: str = Query(..., description="학급명, 예: 3"),
 ):
     """
-    주간(월~금) 정규 시간표 조회 API. (초/중/고 커버 가능 버전)
-    해당 학년도 3월(3/2~3/31) 데이터를 기반으로 요일/교시별 최빈 과목을 반환합니다.
+    반별 주간(월~금) 정규 시간표 조회 API. (초/중/고 커버 가능 버전).
+    해당 학년도 초반 2달치(3/2~4/30) 데이터를 기반으로 요일/교시별 최빈 과목을 반환합니다.
     """
     return await get_school_regular_timetable(
         school_kind=school_kind,
@@ -93,7 +93,7 @@ async def get_user_weekly_timetable(
     ),
 ):
     """
-    이번 주 주간(월~금) 시간표 조회 API (초/중/고 커버 가능 버전)
+    반별 이번 주 주간(월~금) 시간표 조회 API (초/중/고 커버 가능 버전)
     행사 일정 등 유동적인 시간표 조회에 활용 
     """
     return await get_school_weekly_timetable(
@@ -119,7 +119,7 @@ async def get_user_timetable(
     ),
 ):
     """
-    특정 일자 시간표 조회 API (초/중/고 커버 가능 버전). 
+    반별 특정 일자 시간표 조회 API (초/중/고 커버 가능 버전). 
     일자 생략하면 오늘 날짜 기준으로 해당 일자 시간표 반환(고정 시간표 아닌 유동(행사 등) 시간표 조회)
     """
 
