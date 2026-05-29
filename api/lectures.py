@@ -1,9 +1,8 @@
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
-from supabase_auth.errors import AuthApiError
 
 from dependencies import get_current_token, get_current_user_id
 from services.db.supabase import get_supabase
-from services.lectures.lectures import get_user_transcripts, save_lecture_stt_transcript, save_lesson_summary, summarize_lesson
+from services.lectures.lectures import get_transcript_summary, get_user_transcripts, save_lecture_stt_transcript, save_lesson_summary, summarize_lesson
 
 router = APIRouter(
     prefix="/api/lectures",
@@ -59,6 +58,20 @@ async def upload_lecture_stt_transcript(
         subject=subject,
         token=token,
     )
+
+
+@router.get("/stt-transcript/{transcript_id}/summary")
+async def get_lesson_summary(
+    transcript_id: str,
+    token: str = Depends(get_current_token),
+):
+    """
+    저장된 AI 요약을 반환합니다. 요약이 없으면 404를 반환합니다.
+    """
+    summary = await get_transcript_summary(transcript_id=transcript_id, token=token)
+    if summary is None:
+        raise HTTPException(status_code=404, detail="요약이 없습니다.")
+    return summary
 
 
 @router.post("/stt-transcript/{transcript_id}/summary", status_code=201)
