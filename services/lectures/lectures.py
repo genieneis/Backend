@@ -11,9 +11,9 @@ async def get_user_transcripts(*, user_id: str, token: str) -> list[dict]:
     client.postgrest.auth(token)
 
     try:
-        response = (
+        t_resp = (
             client.table("lesson_stt_transcripts")
-            .select("id, subject, filename, content, created_at, lesson_stt_summaries(id, content)")
+            .select("id, subject, filename, content, created_at")
             .eq("user_id", user_id)
             .order("created_at", desc=True)
             .execute()
@@ -21,26 +21,69 @@ async def get_user_transcripts(*, user_id: str, token: str) -> list[dict]:
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"노트 조회 실패: {str(e)}") from e
 
-    result = []
-    for row in response.data:
-        summary_row = (row.get("lesson_stt_summaries") or [None])[0]
-        summary = None
-        if summary_row:
-            try:
-                summary = json.loads(summary_row["content"])
-            except (json.JSONDecodeError, KeyError):
-                pass
+    rows = t_resp.data
+    if not rows:
+        return []
 
-        result.append({
+    # 요약 별도 조회
+    transcript_ids = [r["id"] for r in rows]
+    summary_map: dict[str, str | None] = {}  # transcript_id → topic
+    try:
+        s_resp = (
+            client.table("lesson_stt_summaries")
+            .select("transcript_id, content")
+            .in_("transcript_id", transcript_ids)
+            .execute()
+        )
+        for s in s_resp.data:
+            try:
+                topic = json.loads(s["content"]).get("topic")
+            except (json.JSONDecodeError, TypeError):
+                topic = None
+            summary_map[s["transcript_id"]] = topic
+    except Exception:
+        pass
+
+    return [
+        {
             "id": row["id"],
             "subject": row.get("subject"),
             "filename": row.get("filename"),
             "content": row["content"],
             "created_at": row["created_at"],
-            "summary": summary,
-        })
+            "summary": {
+                "exists": row["id"] in summary_map,
+                "topic": summary_map.get(row["id"]),
+            },
+        }
+        for row in rows
+    ]
 
-    return result
+
+async def get_transcript_summary(*, transcript_id: str, token: str) -> dict | None:
+    client = get_supabase()
+    client.postgrest.auth(token)
+
+    try:
+        response = (
+            client.table("lesson_stt_summaries")
+            .select("id, content, created_at")
+            .eq("transcript_id", transcript_id)
+            .maybe_single()
+            .execute()
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"요약 조회 실패: {str(e)}") from e
+
+    if not response.data:
+        return None
+
+    try:
+        content = json.loads(response.data["content"])
+    except (json.JSONDecodeError, KeyError):
+        return None
+
+    return content
 
 
 async def save_lesson_summary(*, transcript_id: str, summary: "LessonSummary", token: str) -> dict:
