@@ -23,18 +23,20 @@ TIMETABLE_CONFIG = {
         "endpoint": "/hub/hisTimetable",
         "response_key": "hisTimetable",
     },
-    
+    "special": {
+        "endpoint": "/hub/spsTimetable",
+        "response_key": "spsTimetable",
+    },
 }
+
 
 def get_neis_api_key() -> str:
     api_key = os.getenv("NEIS_API_KEY")
-
     if not api_key:
         raise HTTPException(
             status_code=500,
             detail="NEIS_API_KEY 환경 변수가 설정되어 있지 않습니다.",
         )
-
     return api_key
 
 
@@ -61,10 +63,8 @@ def get_school_year(date_yyyymmdd: str) -> str:
     """
     year = int(date_yyyymmdd[:4])
     month = int(date_yyyymmdd[4:6])
-
     if month < 3:
         return str(year - 1)
-
     return str(year)
 
 
@@ -74,10 +74,6 @@ def extract_timetable_rows(
 ) -> tuple[list[dict[str, Any]], int]:
     """
     NEIS 시간표 응답에서 row와 전체 개수를 추출합니다.
-
-    elementary -> elsTimetable
-    middle     -> misTimetable
-    high       -> hisTimetable
     """
     if "RESULT" in data:
         result = data["RESULT"]
@@ -133,14 +129,13 @@ def extract_timetable_rows(
 
     return rows, total_count
 
+
 def to_timetable_item(row: dict[str, Any]) -> dict[str, Any]:
-    """
-    프론트 시간표 리스트에 필요한 최소 정보만 반환합니다.
-    """
     return {
         "period": row.get("PERIO"),
         "subject": row.get("ITRT_CNTNT"),
     }
+
 
 async def fetch_timetable_page(
     *,
@@ -155,7 +150,20 @@ async def fetch_timetable_page(
     page_index: int,
     page_size: int,
     class_nm: str | None = None,
+    special_school_course: str | None = None,
 ) -> tuple[list[dict[str, Any]], int]:
+    """
+    school_kind: elementary / middle / high / special
+    special_school_course: school_kind='special'일 때 NEIS SCHUL_CRSE_SC_NM 값
+                          (예: '초등학교', '중학교', '고등학교')
+    """
+    config = TIMETABLE_CONFIG.get(school_kind)
+    if not config:
+        raise HTTPException(
+            status_code=400,
+            detail="school_kind는 elementary, middle, high, special 중 하나여야 합니다.",
+        )
+
     params: dict[str, Any] = {
         "KEY": api_key,
         "Type": "json",
@@ -171,16 +179,11 @@ async def fetch_timetable_page(
     if class_nm is not None:
         params["CLASS_NM"] = class_nm
 
+    # 특수학교: SCHUL_CRSE_SC_NM으로 학교과정(초등학교/중학교/고등학교) 필터
+    if school_kind == "special" and special_school_course:
+        params["SCHUL_CRSE_SC_NM"] = special_school_course
 
     try:
-        config = TIMETABLE_CONFIG.get(school_kind)
-
-        if not config:
-            raise HTTPException(
-                status_code=400,
-                detail="school_kind는 elementary, middle, high 중 하나여야 합니다.",
-            )
-
         url = NEIS_BASE_URL + config["endpoint"]
         response_key = config["response_key"]
         debug_params = {k: v for k, v in params.items() if k != "KEY"}
@@ -199,10 +202,7 @@ async def fetch_timetable_page(
             detail=f"NEIS 시간표 API 요청 실패: {str(e)}",
         ) from e
 
-    return extract_timetable_rows(
-    response.json(),
-    response_key=response_key,
-)
+    return extract_timetable_rows(response.json(), response_key=response_key)
 
 
 async def _get_single_day_timetable(
@@ -215,6 +215,7 @@ async def _get_single_day_timetable(
     grade: str,
     class_nm: str,
     date: str,
+    special_school_course: str | None = None,
 ) -> dict[str, Any]:
     school_year = get_school_year(date)
 
@@ -235,6 +236,7 @@ async def _get_single_day_timetable(
             date=date,
             page_index=page_index,
             page_size=page_size,
+            special_school_course=special_school_course,
         )
 
         if not rows:
@@ -267,6 +269,7 @@ async def get_school_timetable(
     grade: str,
     class_nm: str,
     date: str | None = None,
+    special_school_course: str | None = None,
 ):
     api_key = get_neis_api_key()
     target_date = date or get_today_yyyymmdd()
@@ -281,6 +284,7 @@ async def get_school_timetable(
             grade=grade,
             class_nm=class_nm,
             date=target_date,
+            special_school_course=special_school_course,
         )
 
     return {
@@ -302,6 +306,7 @@ async def get_school_weekly_timetable(
     grade: str,
     class_nm: str,
     date: str | None = None,
+    special_school_course: str | None = None,
 ):
     api_key = get_neis_api_key()
     base_date = date or get_today_yyyymmdd()
@@ -319,6 +324,7 @@ async def get_school_weekly_timetable(
                     grade=grade,
                     class_nm=class_nm,
                     date=d,
+                    special_school_course=special_school_course,
                 )
                 for d in week_dates
             ],
@@ -376,12 +382,13 @@ async def fetch_timetable_range_page(
     to_date: str,
     page_index: int,
     page_size: int,
+    special_school_course: str | None = None,
 ) -> tuple[list[dict[str, Any]], int]:
     config = TIMETABLE_CONFIG.get(school_kind)
     if not config:
         raise HTTPException(
             status_code=400,
-            detail="school_kind는 elementary, middle, high 중 하나여야 합니다.",
+            detail="school_kind는 elementary, middle, high, special 중 하나여야 합니다.",
         )
 
     params: dict[str, Any] = {
@@ -397,6 +404,9 @@ async def fetch_timetable_range_page(
         "TI_FROM_YMD": from_date,
         "TI_TO_YMD": to_date,
     }
+
+    if school_kind == "special" and special_school_course:
+        params["SCHUL_CRSE_SC_NM"] = special_school_course
 
     url = NEIS_BASE_URL + config["endpoint"]
     try:
@@ -423,6 +433,7 @@ async def get_school_regular_timetable(
     school_code: str,
     grade: str,
     class_nm: str,
+    special_school_course: str | None = None,
 ) -> dict[str, Any]:
     """
     해당 학년도 초반 2달치(3/2~4/30) 시간표 데이터를 기반으로
@@ -452,6 +463,7 @@ async def get_school_regular_timetable(
                 to_date=to_date,
                 page_index=page_index,
                 page_size=page_size,
+                special_school_course=special_school_course,
             )
             if not rows:
                 break
@@ -510,6 +522,7 @@ async def get_class_list(
     school_code: str,
     grade: str,
     date: str | None = None,
+    special_school_course: str | None = None,
 ):
     api_key = get_neis_api_key()
     target_date = date or get_today_yyyymmdd()
@@ -532,6 +545,7 @@ async def get_class_list(
                 date=target_date,
                 page_index=page_index,
                 page_size=page_size,
+                special_school_course=special_school_course,
             )
 
             if not rows:
