@@ -377,7 +377,7 @@ async def fetch_timetable_range_page(
     school_code: str,
     school_year: str,
     grade: str,
-    class_nm: str,
+    class_nm: str | None,
     from_date: str,
     to_date: str,
     page_index: int,
@@ -400,10 +400,12 @@ async def fetch_timetable_range_page(
         "SD_SCHUL_CODE": school_code,
         "AY": school_year,
         "GRADE": grade,
-        "CLASS_NM": class_nm,
         "TI_FROM_YMD": from_date,
         "TI_TO_YMD": to_date,
     }
+
+    if class_nm is not None:
+        params["CLASS_NM"] = class_nm
 
     if school_kind == "special" and special_school_course:
         params["SCHUL_CRSE_SC_NM"] = special_school_course
@@ -525,8 +527,10 @@ async def get_class_list(
     special_school_course: str | None = None,
 ):
     api_key = get_neis_api_key()
-    target_date = date or get_today_yyyymmdd()
-    school_year = get_school_year(target_date)
+    school_year = get_school_year(date or get_today_yyyymmdd())
+    # 3월 둘째 주(10~16일) 범위로 조회해 공휴일/주말 문제 회피
+    from_date = f"{school_year}0310"
+    to_date = f"{school_year}0316"
 
     page_index = 1
     page_size = 1000
@@ -534,7 +538,7 @@ async def get_class_list(
 
     async with httpx.AsyncClient(timeout=10.0) as client:
         while True:
-            rows, total_count = await fetch_timetable_page(
+            rows, total_count = await fetch_timetable_range_page(
                 client=client,
                 api_key=api_key,
                 school_kind=school_kind,
@@ -542,7 +546,9 @@ async def get_class_list(
                 school_code=school_code,
                 school_year=school_year,
                 grade=grade,
-                date=target_date,
+                class_nm=None,
+                from_date=from_date,
+                to_date=to_date,
                 page_index=page_index,
                 page_size=page_size,
                 special_school_course=special_school_course,
