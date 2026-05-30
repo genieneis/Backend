@@ -15,6 +15,7 @@ async def sign_up(
     school_name: str | None,
     grade: str,
     class_nm: str,
+    special_school_course: str | None = None,
     first_period_start_time: str | None = None,
     fifth_period_start_time: str | None = None,
 ) -> dict:
@@ -45,6 +46,8 @@ async def sign_up(
             "grade": grade,
             "class_nm": class_nm,
         }
+        if school_kind == "special" and special_school_course:
+            row["special_school_course"] = special_school_course
         if first_period_start_time:
             row["first_period_start_time"] = first_period_start_time
         if fifth_period_start_time:
@@ -92,6 +95,7 @@ async def sign_in(*, email: str, password: str) -> dict:
             "school_name": profile.get("school_name"),
             "grade": profile.get("grade"),
             "class_nm": profile.get("class_nm"),
+            "special_school_course": profile.get("special_school_course"),
             "first_period_start_time": profile.get("first_period_start_time"),
             "fifth_period_start_time": profile.get("fifth_period_start_time"),
         },

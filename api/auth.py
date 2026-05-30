@@ -21,6 +21,7 @@ class SignUpRequest(BaseModel):
     school_name: str | None = None
     grade: str
     class_nm: str
+    special_school_course: str | None = None
     first_period_start_time: str | None = None
     fifth_period_start_time: str | None = None
 
@@ -30,6 +31,7 @@ async def signup(body: SignUpRequest):
     """
     회원가입 API.
     Supabase Auth로 계정 생성 후 profiles 테이블에 학교 정보 저장.
+    특수학교(school_kind=special)의 경우 special_school_course(초등학교/중학교/고등학교)를 함께 전달.
     """
     return await sign_up(
         email=body.email,
@@ -41,6 +43,7 @@ async def signup(body: SignUpRequest):
         school_name=body.school_name,
         grade=body.grade,
         class_nm=body.class_nm,
+        special_school_course=body.special_school_course,
         first_period_start_time=body.first_period_start_time,
         fifth_period_start_time=body.fifth_period_start_time,
     )
