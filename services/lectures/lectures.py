@@ -13,7 +13,7 @@ async def get_user_transcripts(*, user_id: str, token: str) -> list[dict]:
     try:
         t_resp = (
             client.table("lesson_stt_transcripts")
-            .select("id, subject, filename, content, created_at")
+            .select("id, subject, subject_name, filename, content, created_at")
             .eq("user_id", user_id)
             .order("created_at", desc=True)
             .execute()
@@ -25,8 +25,23 @@ async def get_user_transcripts(*, user_id: str, token: str) -> list[dict]:
     if not rows:
         return []
 
-    # 요약 별도 조회
     transcript_ids = [r["id"] for r in rows]
+
+    # AI 보정 내용 조회: transcript_id → ai_content
+    ai_content_map: dict[str, str] = {}
+    try:
+        ai_resp = (
+            client.table("lesson_stt_ai_transcripts")
+            .select("transcript_id, content")
+            .in_("transcript_id", transcript_ids)
+            .execute()
+        )
+        for a in ai_resp.data:
+            ai_content_map[a["transcript_id"]] = a["content"]
+    except Exception:
+        pass
+
+    # 요약 조회: lesson_stt_summaries.transcript_id = raw_transcript_id
     summary_map: dict[str, str | None] = {}  # transcript_id → topic
     try:
         s_resp = (
@@ -48,8 +63,10 @@ async def get_user_transcripts(*, user_id: str, token: str) -> list[dict]:
         {
             "id": row["id"],
             "subject": row.get("subject"),
+            "subject_name": row.get("subject_name"),
             "filename": row.get("filename"),
             "content": row["content"],
+            "ai_content": ai_content_map.get(row["id"]),
             "created_at": row["created_at"],
             "summary": {
                 "exists": row["id"] in summary_map,
@@ -115,13 +132,24 @@ async def save_lesson_summary(*, transcript_id: str, summary: "LessonSummary", t
     return record
 
 
-async def save_lecture_stt_transcript(*, user_id: str, filename: str, content: str, subject: str | None = None, token: str) -> dict:
+async def save_lecture_stt_transcript(
+    *,
+    user_id: str,
+    filename: str,
+    content: str,
+    subject: str | None = None,
+    subject_name: str | None = None,
+    ai_content: str | None = None,
+    token: str,
+) -> dict:
     client = get_supabase()
     client.postgrest.auth(token)
 
     row: dict = {"user_id": user_id, "filename": filename, "content": content}
     if subject:
         row["subject"] = subject
+    if subject_name:
+        row["subject_name"] = subject_name
 
     try:
         response = (
@@ -136,8 +164,30 @@ async def save_lecture_stt_transcript(*, user_id: str, filename: str, content: s
     if not record:
         raise HTTPException(status_code=500, detail="강의 STT 저장 실패: 저장된 데이터가 없습니다.")
 
+    transcript_id = record["id"]
+
+    # 후보정 텍스트가 있으면 별도 테이블에 저장
+    ai_transcript_id: str | None = None
+    if ai_content and ai_content.strip():
+        ai_row: dict = {
+            "transcript_id": transcript_id,
+            "user_id": user_id,
+            "content": ai_content,
+        }
+        if subject:
+            ai_row["subject"] = subject
+        if subject_name:
+            ai_row["subject_name"] = subject_name
+        try:
+            ai_resp = client.table("lesson_stt_ai_transcripts").insert(ai_row).execute()
+            ai_transcript_id = ai_resp.data[0]["id"] if ai_resp.data else None
+        except Exception as e:
+            # AI 보정 저장 실패는 원문 저장 성공을 방해하지 않음
+            raise HTTPException(status_code=500, detail=f"AI 보정 STT 저장 실패: {str(e)}") from e
+
     return {
-        "id": record["id"],
+        "id": transcript_id,
+        "ai_transcript_id": ai_transcript_id,
         "filename": record["filename"],
         "created_at": record["created_at"],
     }

@@ -27,7 +27,9 @@ async def list_user_transcripts(
 @router.post("/stt-transcript", status_code=201)
 async def upload_lecture_stt_transcript(
     file: UploadFile = File(..., description="STT 변환 텍스트 파일 (.txt)"),
-    subject: str | None = Form(None, description="과목명"),
+    subject: str | None = Form(None, description="과목 대범주 (예: 과학탐구, 수학)"),
+    subject_name: str | None = Form(None, description="실제 과목명 (예: 물리학, 공통수학1)"),
+    ai_content: str | None = Form(None, description="AI 보정 STT 텍스트"),
     user_id: str = Depends(get_current_user_id),
     token: str = Depends(get_current_token),
 ):
@@ -56,6 +58,8 @@ async def upload_lecture_stt_transcript(
         filename=file.filename,
         content=content,
         subject=subject,
+        subject_name=subject_name,
+        ai_content=ai_content,
         token=token,
     )
 
@@ -85,18 +89,34 @@ async def create_lesson_summary(
     supabase = get_supabase()
     supabase.postgrest.auth(token)
 
+    # AI 보정본 우선 조회 (lesson_stt_ai_transcripts.transcript_id = raw_transcript_id)
+    stt_text = ""
     try:
-        row = (
-            supabase.table("lesson_stt_transcripts")
+        ai_row = (
+            supabase.table("lesson_stt_ai_transcripts")
             .select("content")
-            .eq("id", transcript_id)
-            .single()
+            .eq("transcript_id", transcript_id)
+            .maybe_single()
             .execute()
         )
-    except Exception as e:
-        raise HTTPException(status_code=404, detail="트랜스크립트를 찾을 수 없습니다.") from e
+        if ai_row.data:
+            stt_text = ai_row.data.get("content", "")
+    except Exception:
+        pass
 
-    stt_text = row.data.get("content", "")
+    # AI 보정본 없으면 원문으로 fallback
+    if not stt_text.strip():
+        try:
+            raw_row = (
+                supabase.table("lesson_stt_transcripts")
+                .select("content")
+                .eq("id", transcript_id)
+                .single()
+                .execute()
+            )
+            stt_text = raw_row.data.get("content", "")
+        except Exception as e:
+            raise HTTPException(status_code=404, detail="트랜스크립트를 찾을 수 없습니다.") from e
     if not stt_text.strip():
         raise HTTPException(status_code=400, detail="트랜스크립트 내용이 비어 있습니다.")
 
