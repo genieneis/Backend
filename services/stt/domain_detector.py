@@ -8,11 +8,11 @@ _MIN_SCORE = 2
 
 # 현재 domain을 다른 domain으로 교체하려면 점수 차가 이 값 이상이어야 함.
 # 수업 중 지나가는 발화로 domain이 흔들리지 않도록 관성을 줌.
-_SWITCH_MARGIN = 2
+_SWITCH_MARGIN = 1
 
 # 같은 domain 후보가 연속으로 이 횟수만큼 1위여야 실제 전환.
-# flush마다 update()가 호출되므로 2 = 연속 2배치(약 10문장) 동안 우세해야 전환.
-_CONFIRM_STREAK = 2
+# 1 = 첫 번째 배치에서 바로 확정. 오탐 위험은 낮고 빠른 확정이 더 실용적.
+_CONFIRM_STREAK = 1
 
 
 @dataclass
@@ -27,9 +27,20 @@ class DomainDetector:
     _streak: int = field(default=0, repr=False)               # 후보 연속 1위 횟수
 
     def _score_all(self, text: str) -> dict[str, int]:
-        """각 domain의 core_keywords가 text에 몇 개 등장하는지 카운트."""
+        """각 domain의 core_keywords가 text에 몇 개 등장하는지 카운트.
+        - 2글자 미만 키워드는 오탐 방지를 위해 무시
+        - 공백 제거 + 소문자 변환 후 비교 (붙여쓰기·대소문자 오인식 흡수)"""
+        text_lower = text.lower()
+        normalized = text_lower.replace(" ", "")
         return {
-            ts.domain: sum(1 for kw in ts.core_keywords if kw in text)
+            ts.domain: sum(
+                1 for kw in ts.core_keywords
+                if len(kw.replace(" ", "")) >= 2
+                and (
+                    kw.lower() in text_lower
+                    or kw.lower().replace(" ", "") in normalized
+                )
+            )
             for ts in self.term_sets
         }
 
