@@ -159,12 +159,18 @@ async def stt_ai_websocket(
         async with flush_lock:
             if not session._pending:
                 return
+            prev_domain = session.detector.current_domain
             batch, domain, priority_terms, source_terms = session.flush()
 
             logger.info(
-                "[도메인 결정] domain=%s | batch_ids=%s",
+                "[도메인 체크] domain=%s | batch_ids=%s",
                 domain, [s.id for s in batch],
             )
+            if domain and domain != prev_domain:
+                logger.info(
+                    "[도메인 확정] %s → %s",
+                    prev_domain or "미확정", domain,
+                )
 
             try:
                 results = await process_stt_batch(
@@ -174,6 +180,7 @@ async def stt_ai_websocket(
                     priority_terms=priority_terms,
                     source_terms=source_terms,
                     matched=session.matched,
+                    domain_names=[ts.domain for ts in session.term_sets] or None,
                 )
             except Exception as e:
                 logger.error("[LLM 보정 실패] %s", e)
@@ -183,18 +190,11 @@ async def stt_ai_websocket(
                 "type": "ai_corrected",
                 "domain": domain,
                 "sentences": [
-                    {
-                        "id": r.id,
-                        "ai_text": r.ai_text,
-                        "tags": [{"type": t.type, "content": t.content} for t in r.tags],
-                    }
+                    {"id": r.id, "ai_text": r.ai_text}
                     for r in results
                 ],
             }
-            logger.info(
-                "[보정 결과 전송] sentences=%s",
-                [{s["id"]: s["ai_text"]} for s in payload["sentences"]],
-            )
+            
             await ws.send_text(json.dumps(payload, ensure_ascii=False))
 
     async def timer_task():
